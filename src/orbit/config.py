@@ -424,6 +424,9 @@ class OrbitConfig:
     def with_paths(self, paths: Iterable[str]) -> OrbitConfig:
         return replace(self, paths=tuple(paths))
 
+    def with_exclude_paths(self, paths: Iterable[str]) -> OrbitConfig:
+        return replace(self, exclude_paths=tuple(paths))
+
     def with_embedding_provider(self, provider: str, **kwargs: Any) -> OrbitConfig:
         return replace(self, embedding=replace(self.embedding, provider=provider, **kwargs))
 

@@ -79,9 +79,9 @@ class OrbitEngine:
             raise IndexNotFoundError(
                 "no paths to index; pass paths explicitly or set config.paths"
             )
-        if self.config.exclude_paths:
-            targets = targets + list(self.config.exclude_paths)
-        report = self.indexer.sync(targets, prune=prune)
+        report = self.indexer.sync(
+            targets, prune=prune, exclude=self.config.exclude_paths
+        )
         # Record the active embedding provider for status reporting. Only write
         # it when an embedder was actually constructed during this run; otherwise
         # (e.g. every document unchanged in a fresh process) we would overwrite a

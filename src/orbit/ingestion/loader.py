@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import fnmatch
 import os
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -60,19 +60,76 @@ def _within_root(path: Path, root: Path) -> bool:
         return False
 
 
+_GLOB_CHARS = ("*", "?", "[")
+
+
+def is_excluded_by(path: Path, root: Path, patterns: Sequence[str]) -> bool:
+    """True when ``path`` is covered by one of the operator's ``exclude_paths``.
+
+    Each pattern is either a glob or a plain path:
+
+    * a glob matches the root-relative path, the absolute path, or the file name;
+    * a plain path matches when it names the file, names an ancestor directory,
+      or is itself the absolute location of either.
+
+    Matching is done on resolved paths so ``./a/../b`` and symlinked spellings
+    behave the same as the obvious form.
+    """
+    if not patterns:
+        return False
+
+    try:
+        rel = path.resolve().relative_to(root.resolve()).as_posix()
+    except (ValueError, OSError):
+        rel = path.as_posix()
+    absolute = path.as_posix()
+
+    for raw in patterns:
+        pattern = str(raw).strip()
+        if not pattern:
+            continue
+
+        if any(ch in pattern for ch in _GLOB_CHARS):
+            if (
+                fnmatch.fnmatch(rel, pattern)
+                or fnmatch.fnmatch(absolute, pattern)
+                or fnmatch.fnmatch(path.name, pattern)
+            ):
+                return True
+            continue
+
+        # Plain path: compare positionally, absolute vs relative, and treat a
+        # directory entry as excluding everything beneath it.
+        candidate = Path(pattern).expanduser()
+        candidates = {candidate.as_posix()}
+        if candidate.is_absolute():
+            candidates.add(candidate.as_posix().rstrip("/"))
+        for text in candidates:
+            if text in (rel, absolute, path.name):
+                return True
+            if rel == text or rel.startswith(text.rstrip("/") + "/"):
+                return True
+            if absolute == text or absolute.startswith(text.rstrip("/") + "/"):
+                return True
+    return False
+
+
 def discover_files(
     roots: list[str] | list[Path],
     config: IngestionConfig | None = None,
+    exclude: Sequence[str] = (),
 ) -> tuple[list[Path], list[LoadFailure]]:
     """Return ``(candidates, failures)`` for all indexable files under ``roots``.
 
-    Ordering is deterministic: roots in the order given, files sorted by their
-    path relative to their root.
+    ``exclude`` holds the operator's ``exclude_paths``: globs and paths that must
+    never be indexed. Ordering is deterministic -- roots in the order given,
+    files sorted by their path relative to their root.
     """
     config = config or IngestionConfig()
     excluded_dirs = config.effective_excluded_dirs()
     excluded_globs = config.effective_excluded_globs()
     allowed_ext = config.allowed_extensions()
+    exclude = tuple(exclude)
 
     candidates: list[Path] = []
     failures: list[LoadFailure] = []
@@ -85,7 +142,8 @@ def discover_files(
             )
             continue
         if root.is_file():
-            candidates.append(root)
+            if not is_excluded_by(root, root.parent, exclude):
+                candidates.append(root)
             continue
 
         for dirpath, dirnames, filenames in os.walk(root, followlinks=config.follow_symlinks):
@@ -94,7 +152,9 @@ def discover_files(
             dirnames[:] = sorted(
                 d
                 for d in dirnames
-                if d not in excluded_dirs and not (d.startswith(".") and d not in (".github",))
+                if d not in excluded_dirs
+                and not (d.startswith(".") and d not in (".github",))
+                and not is_excluded_by(here / d, root, exclude)
             )
             for filename in sorted(filenames):
                 fp = here / filename
@@ -102,6 +162,8 @@ def discover_files(
                     failures.append(
                         LoadFailure(str(fp), LoadFailureReason.EXCLUDED, "outside root")
                     )
+                    continue
+                if is_excluded_by(fp, root, exclude):
                     continue
                 if _matches_any(filename, excluded_globs):
                     continue
@@ -260,10 +322,11 @@ def _re_search(pattern: str, data: bytes) -> bool:
 def iter_source_docs(
     roots: list[str] | list[Path],
     config: IngestionConfig | None = None,
+    exclude: Sequence[str] = (),
 ) -> Iterator[SourceDoc | LoadFailure]:
     """Discover and load every file under ``roots``, yielding docs and failures."""
     config = config or IngestionConfig()
-    candidates, failures = discover_files(roots, config)
+    candidates, failures = discover_files(roots, config, exclude)
     yield from failures
     for path in candidates:
         root = _root_for(path, roots)

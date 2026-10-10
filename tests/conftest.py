@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -125,6 +126,8 @@ def make_config(db_path: Path, **overrides) -> OrbitConfig:
         cfg = cfg.with_embedding_provider(overrides.pop("embedding_provider"))
     if "paths" in overrides:
         cfg = cfg.with_paths(overrides.pop("paths"))
+    if "exclude_paths" in overrides:
+        cfg = replace(cfg, exclude_paths=tuple(overrides.pop("exclude_paths")))
     return cfg
 
 

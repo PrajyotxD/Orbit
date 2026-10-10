@@ -54,9 +54,10 @@ docs = ["pdoc>=14.0"]
 orbit = "orbit.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/orbit-rag/orbit"
-Documentation = "https://github.com/orbit-rag/orbit/tree/main/docs"
-Issues = "https://github.com/orbit-rag/orbit/issues"
+Homepage = "https://github.com/PrajyotxD/Orbit"
+Documentation = "https://github.com/PrajyotxD/Orbit/tree/main/docs"
+Issues = "https://github.com/PrajyotxD/Orbit/issues"
+Changelog = "https://github.com/PrajyotxD/Orbit/commits/main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

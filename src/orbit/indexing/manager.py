@@ -137,8 +137,17 @@ class IndexManager:
         return False
 
     # -------------------------------------------------------------- main entry
-    def sync(self, roots: Sequence[str | Path], *, prune: bool = True) -> IndexReport:
+    def sync(
+        self,
+        roots: Sequence[str | Path],
+        *,
+        prune: bool = True,
+        exclude: Sequence[str] = (),
+    ) -> IndexReport:
         """Reconcile ``roots`` into the index. Returns a summary of the sweep.
+
+        ``exclude`` holds the operator's ``exclude_paths`` -- paths and globs that
+        must never be indexed.
 
         Pruning is deliberately conservative: a document is only considered
         deleted if it lived under a root that was successfully scanned in this
@@ -174,7 +183,7 @@ class IndexManager:
             except OSError:
                 continue
 
-        items = iter_source_docs([str(r) for r in roots], self.config.ingestion)
+        items = iter_source_docs([str(r) for r in roots], self.config.ingestion, exclude)
         scanned = 0
 
         for item in items:
