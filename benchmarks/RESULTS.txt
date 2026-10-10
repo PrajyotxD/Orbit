@@ -1,0 +1,88 @@
+==============================================================================
+ORBIT RETRIEVAL BENCHMARK
+==============================================================================
+         orbit_version: 0.1.0
+                python: 3.11.9
+              platform: Windows 10 (AMD64)
+                   cpu: Intel64 Family 6 Model 186 Stepping 2, GenuineIntel
+                sqlite: 3.45.1
+    embedding_provider: hashing
+   embedding_dimension: 512
+       embedding_model: orbit-hashing-v1
+              chunking: {'max_tokens': 400, 'overlap_tokens': 60}
+             retrieval: {'fusion': 'rrf', 'lexical_weight': 1.0, 'vector_weight': 1.0, 'rrf_k': 60, 'min_vector_score': 0.05}
+             timestamp: 2026-10-10T21:09:53+0530
+
+corpus: 17 documents, 105 chunks, 105 embeddings in 207.7 ms
+indexing throughput: 81.8 docs/s, 505.5 chunks/s
+
+queries: 20
+
+==============================================================================
+ORBIT RETRIEVAL BENCHMARK
+==============================================================================
+generated (UTC)   : 2026-10-10T15:39:53+00:00
+orbit version      : 0.1.0
+python             : 3.11.9 (CPython)
+platform           : Windows-10-10.0.26300-SP0
+cpu                : Intel64 Family 6 Model 186 Stepping 2, GenuineIntel / 16 logical
+sqlite             : 3.45.1
+embedding provider : hashing dim=512
+chunking           : max_tokens=400 overlap=60 max_chars=1600 tokens_per_char=4.0
+fusion             : rrf rrf_k=60 w_lex=1.0 w_vec=1.0 cand_mult=4
+index              : 17 docs, 105 chunks, 105 embeddings (hashing)
+cases              : 20  repeats=1  k=1,3,5
+labels             : chunk-level on 0/20 cases, location-level on 20/20 cases
+note               : (none)
+
+MODE STATUS
+------------------------------------------------------------------------------
+  lexical  ok           channels=lexical        
+  vector   ok           channels=vector         
+  hybrid   ok           channels=lexical,vector 
+
+LOCATION-LEVEL METRICS  (source_path + overlapping line range)
+------------------------------------------------------------------------------
+mode     status  R@1    R@3    R@5    P@1    P@3    P@5    HR@1   HR@3   HR@5   nDCG@1  nDCG@3  nDCG@5  MRR  
+-------  ------  -----  -----  -----  -----  -----  -----  -----  -----  -----  ------  ------  ------  -----
+lexical  ok      15.00  85.00  85.00  15.00  40.00  29.00  15.00  85.00  85.00    0.15    0.57    0.60    0.5
+vector   ok      25.00  70.00  80.00  25.00  33.33  28.00  25.00  70.00  80.00    0.25    0.49    0.57    0.5
+hybrid   ok      15.00  85.00  85.00  15.00  40.00  29.00  15.00  85.00  85.00    0.15    0.58    0.60    0.5
+
+CHUNK-LEVEL METRICS   : not computed - no case carries chunk-id labels
+
+CITATION-LOCATION ACCURACY  (right file AND overlapping line range)
+------------------------------------------------------------------------------
+mode     status  CLA    file-level  top1 loc  top1 file  mean cand.
+-------  ------  -----  ----------  --------  ---------  ----------
+lexical  ok      85.00  85.00       15.00     15.00       20.0     
+vector   ok      80.00  85.00       25.00     25.00       20.0     
+hybrid   ok      85.00  85.00       15.00     15.00       29.9     
+
+QUERY LATENCY (ms, wall clock around engine call)
+------------------------------------------------------------------------------
+mode     status  n   mean   p50    p95    min    max  
+-------  ------  --  -----  -----  -----  -----  -----
+lexical  ok      20  0.779  0.673  1.218  0.425  1.372
+vector   ok      20  0.964  0.859  1.453  0.764  1.699
+hybrid   ok      20  1.516  1.476  2.133  1.047  2.630
+
+INDEX THROUGHPUT
+------------------------------------------------------------------------------
+  not measured: not requested
+
+INDEX ISOLATION
+------------------------------------------------------------------------------
+  engine.config object unchanged      : True
+  benchmark mutated the engine index   : False
+
+------------------------------------------------------------------------------
+ADDITIONAL NOTES FOR THIS RUN
+  corpus: 17 documents, 105 chunks
+  warm index build: 207.7 ms (81.8 docs/s, 505.5 chunks/s)
+  KNOWN LIMITATIONS
+    - The corpus is small (~17 short documents). These numbers characterise this corpus, not performance at scale.
+    - The default 'hashing' provider is feature hashing, NOT a semantic language model. It matches shared tokens and character n-grams; it does not match synonyms or paraphrase. Install the 'embeddings' extra and use --embedding-provider hf for a real semantic comparison.
+    - Vector search is an exhaustive O(N*d) scan. There is no approximate nearest-neighbour index, so latency grows linearly with corpus size.
+    - Latency figures come from a single warm-cache pass on one machine and are not a benchmark of throughput under concurrency.
+    - Ground truth is authored by hand as (file, line-range) pairs; recall@k is judged on line-range overlap, not on a human relevance rating.

@@ -1,0 +1,199 @@
+{
+  "dataset": "orbit-retrieval-v1",
+  "description": "Hand-authored questions over the tightly-scoped technical notes in this directory. Every line range was read back from the file and checked to contain the answer.",
+  "relevance_basis": {
+    "primary": "location",
+    "location": "A retrieved hit is relevant when its source_path matches a relevant_path AND its [start_line, end_line] range overlaps the corresponding relevant_line_range.",
+    "chunk": "A retrieved hit is relevant when its chunk_id is listed in relevant_chunk_ids. Those ids were read back from a real index built with the chunking config below; they are only valid for that configuration.",
+    "graded": "graded maps 'path:start-end' keys to an integer relevance grade used only by nDCG. Unlabelled gold locations default to grade 1."
+  },
+  "chunking_config": {
+    "max_tokens": 400,
+    "overlap_tokens": 60,
+    "tokens_per_char": 4.0,
+    "min_chunk_tokens": 20
+  },
+  "notes": "Paths are relative to this directory and are the same strings Orbit stores, because ingestion makes paths relative to the indexed root.",
+  "questions": [
+    {
+      "id": "q01",
+      "question": "When a fused ranking is displayed, how is a raw channel score rescaled into the unit interval?",
+      "relevant_paths": ["ratios.md"],
+      "relevant_line_ranges": [[12, 20]],
+      "relevant_chunk_ids": [],
+      "difficulty": "paraphrase",
+      "notes": "Deliberately avoids the token min_max_normalize so the lexical channel cannot win on a rare identifier."
+    },
+    {
+      "id": "q02",
+      "question": "What is the default value of rrf_k, and what does it stop from happening?",
+      "relevant_paths": ["fusion.md"],
+      "relevant_line_ranges": [[18, 22]],
+      "relevant_chunk_ids": [],
+      "difficulty": "identifier",
+      "notes": "Exact rare identifier rrf_k. Appears in no other file."
+    },
+    {
+      "id": "q03",
+      "question": "Which helper performs the rescaling, and what does it return when every score in the list is identical?",
+      "relevant_paths": ["ratios.md"],
+      "relevant_line_ranges": [[14, 18]],
+      "relevant_chunk_ids": [],
+      "difficulty": "identifier",
+      "notes": "Targets min_max_normalize and its divide-by-zero guard."
+    },
+    {
+      "id": "q04",
+      "question": "How is the full text index declared so that chunk text is not stored twice?",
+      "relevant_paths": ["storage.md"],
+      "relevant_line_ranges": [[12, 16]],
+      "relevant_chunk_ids": [],
+      "difficulty": "easy",
+      "notes": "FTS5 external content over the chunks table."
+    },
+    {
+      "id": "q05",
+      "question": "What is the transaction scope when a single document is indexed?",
+      "relevant_paths": ["storage.md"],
+      "relevant_line_ranges": [[23, 26]],
+      "relevant_chunk_ids": [],
+      "difficulty": "easy",
+      "notes": "One transaction per document: chunk rows, FTS rows and embedding rows commit together."
+    },
+    {
+      "id": "q06",
+      "question": "Does a citation that checks out prove that the retrieved claim is actually true?",
+      "relevant_paths": ["validation.md"],
+      "relevant_line_ranges": [[1, 6]],
+      "relevant_chunk_ids": [],
+      "difficulty": "paraphrase",
+      "notes": "Paraphrase of 'a citation is a pointer, not proof'."
+    },
+    {
+      "id": "q07",
+      "question": "List the validation states a citation can be in.",
+      "relevant_paths": ["validation.md"],
+      "relevant_line_ranges": [[14, 28]],
+      "relevant_chunk_ids": [],
+      "difficulty": "easy",
+      "notes": "Multi-line answer: VALID, CONTENT_CHANGED, PATH_MISSING, CHUNK_OUT_OF_RANGE, DOCUMENT_DELETED, NOT_VALIDATED."
+    },
+    {
+      "id": "q08",
+      "question": "Which kinds of files are left out of the index because of what they are called?",
+      "relevant_paths": ["security.md"],
+      "relevant_line_ranges": [[13, 18]],
+      "relevant_chunk_ids": [],
+      "difficulty": "paraphrase",
+      "notes": "Paraphrase of 'secret-like files are skipped'."
+    },
+    {
+      "id": "q09",
+      "question": "How is a chunk identifier constructed, and why do two files with identical text get different identifiers?",
+      "relevant_paths": ["chunking.md"],
+      "relevant_line_ranges": [[13, 18]],
+      "relevant_chunk_ids": [],
+      "difficulty": "easy",
+      "notes": "document id (hash of path) joined to the chunk ordinal with a colon."
+    },
+    {
+      "id": "q10",
+      "question": "What two inputs go into the per-chunk content hash?",
+      "relevant_paths": ["chunking.md"],
+      "relevant_line_ranges": [[20, 24]],
+      "relevant_chunk_ids": [],
+      "difficulty": "easy",
+      "notes": "Start line plus chunk text."
+    },
+    {
+      "id": "q11",
+      "question": "Why can two ranking lists be merged without first putting their scores on a common scale?",
+      "relevant_paths": ["fusion.md"],
+      "relevant_line_ranges": [[12, 16]],
+      "relevant_chunk_ids": [],
+      "difficulty": "paraphrase",
+      "notes": "RRF consumes ranks, not score magnitudes. No rare identifier appears in the question."
+    },
+    {
+      "id": "q12",
+      "question": "What does the built-in hashing embedder guarantee, and what does it explicitly refuse to do?",
+      "relevant_paths": ["embedding.md"],
+      "relevant_line_ranges": [[6, 15]],
+      "relevant_chunk_ids": [],
+      "difficulty": "easy",
+      "notes": "Deterministic and offline, but not semantic."
+    },
+    {
+      "id": "q13",
+      "question": "Which provider mean-pools token vectors, and what extra does it need installed?",
+      "relevant_paths": ["embedding.md"],
+      "relevant_line_ranges": [[17, 22]],
+      "relevant_chunk_ids": [],
+      "difficulty": "easy",
+      "notes": "The hf provider and the optional embeddings extra."
+    },
+    {
+      "id": "q14",
+      "question": "How does a reindex avoid doing any work for a file that has not changed?",
+      "relevant_paths": ["incremental.md"],
+      "relevant_line_ranges": [[5, 8]],
+      "relevant_chunk_ids": [],
+      "difficulty": "paraphrase",
+      "notes": "Paraphrase of the content-hash skip."
+    },
+    {
+      "id": "q15",
+      "question": "How does vector search latency scale as the number of chunks grows?",
+      "relevant_paths": ["limits.md"],
+      "relevant_line_ranges": [[5, 10]],
+      "relevant_chunk_ids": [],
+      "difficulty": "easy",
+      "notes": "Exact scan, linear in chunk count."
+    },
+    {
+      "id": "q16",
+      "question": "Is a conflict candidate an explicit relation or an inferred one?",
+      "relevant_paths": ["conflict.md"],
+      "relevant_line_ranges": [[6, 10]],
+      "relevant_chunk_ids": [],
+      "difficulty": "easy",
+      "notes": "Inferred, never explicit."
+    },
+    {
+      "id": "q17",
+      "question": "Which provenance fields must every MCP tool result carry?",
+      "relevant_paths": ["mcp.md"],
+      "relevant_line_ranges": [[15, 19]],
+      "relevant_chunk_ids": [],
+      "difficulty": "easy",
+      "notes": "Source path, line range and content hash."
+    },
+    {
+      "id": "q18",
+      "question": "How are near-duplicate context blocks removed during assembly?",
+      "relevant_paths": ["context.md"],
+      "relevant_line_ranges": [[11, 14]],
+      "relevant_chunk_ids": [],
+      "difficulty": "easy",
+      "notes": "Identical content hash, plus a 0.92 similarity threshold."
+    },
+    {
+      "id": "q19",
+      "question": "In what form does the command line print each search citation?",
+      "relevant_paths": ["cli.md"],
+      "relevant_line_ranges": [[19, 22]],
+      "relevant_chunk_ids": [],
+      "difficulty": "easy",
+      "notes": "path:start-end, then score and retrieval method."
+    },
+    {
+      "id": "q20",
+      "question": "Which kind of ground-truth label stays valid after the chunker is changed?",
+      "relevant_paths": ["evaluation.md"],
+      "relevant_line_ranges": [[12, 17]],
+      "relevant_chunk_ids": [],
+      "difficulty": "easy",
+      "notes": "File plus line range, as opposed to a chunk identifier."
+    }
+  ]
+}

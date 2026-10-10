@@ -1,0 +1,86 @@
+{
+  "paths": ["./docs", "./src"],
+  "db_path": ".orbit/orbit.db",
+  "exclude_paths": [],
+
+  "chunking": {
+    "max_tokens": 400,
+    "overlap_tokens": 60,
+    "max_chars": 0,
+    "tokens_per_char": 4.0,
+    "min_chunk_tokens": 20,
+    "respect_blank_lines": true,
+    "respect_symbol_boundaries": true
+  },
+
+  "ingestion": {
+    "extra_excluded_dirs": ["fixtures"],
+    "extra_excluded_globs": ["*.generated.ts"],
+    "included_extensions": [],
+    "follow_symlinks": false,
+    "max_file_bytes": 2000000,
+    "skip_secret_like_files": true,
+    "scan_content_for_secrets": false,
+    "secret_content_scan_bytes": 8192,
+    "keep_going_on_error": true,
+    "encoding": "utf-8",
+    "decode_errors": "strict",
+    "text_sniff_bytes": 8192
+  },
+
+  "retrieval": {
+    "limit": 10,
+    "candidate_multiplier": 4,
+    "fusion": "rrf",
+    "lexical_weight": 1.0,
+    "vector_weight": 1.0,
+    "rrf_k": 60,
+    "lexical_k1": 1.2,
+    "lexical_b": 0.75,
+    "min_lexical_score": 0.0,
+    "min_vector_score": 0.05,
+    "min_normalized_score": 0.0,
+    "dedupe": true,
+    "snippet_chars": 320,
+    "vector_batch_size": 64,
+    "metadata_filter_mode": "all"
+  },
+
+  "embedding": {
+    "provider": "hashing",
+    "dimension": 512,
+    "model": "BAAI/bge-small-en-v1.5",
+    "model_path": "",
+    "base_url": "",
+    "api_key_env": "",
+    "batch_size": 32,
+    "device": "auto",
+    "normalize": true,
+    "lowercase": true,
+    "max_length": 512,
+    "cache": true
+  },
+
+  "generation": {
+    "enabled": false,
+    "provider": "openai_compatible",
+    "base_url": "",
+    "api_key_env": "ORBIT_LLM_API_KEY",
+    "model": "local-model",
+    "temperature": 0.1,
+    "max_tokens": 1024,
+    "timeout_seconds": 60.0,
+    "system_prompt": "You are Orbit's answer generator. You receive numbered EVIDENCE passages with source paths and content hashes. Rules: (1) Answer only from the evidence. (2) Label anything you infer as inference, not evidence. (3) If the evidence is insufficient, say so explicitly and answer nothing further. (4) Cite claims by the [n] number of the evidence passage you used. (5) Never invent a source path or line number that is not present in the evidence."
+  },
+
+  "context": {
+    "token_budget": 4000,
+    "max_blocks": 12,
+    "dedupe_hash": true,
+    "dedupe_similarity": true,
+    "similarity_threshold": 0.92,
+    "min_score_ratio": 0.35,
+    "include_metadata": true,
+    "ordering": "score"
+  }
+}

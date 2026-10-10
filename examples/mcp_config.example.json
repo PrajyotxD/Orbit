@@ -1,0 +1,72 @@
+{
+  "$comment": [
+    "Example MCP client configuration for ORBIT.",
+    "",
+    "Replace the absolute db path below with your own. The index must already",
+    "exist; the MCP server does not index anything, it only serves an existing",
+    "index. Create one with:  orbit --db <db> init && orbit --db <db> index <path>",
+    "",
+    "Requires the mcp extra:  pip install -e '.[mcp]'",
+    "If you run Orbit from a source checkout without installing, set",
+    "PYTHONPATH to the repo's src/ directory and use 'python -m orbit.mcp_server'",
+    "as the command instead.",
+    "",
+    "NOTE: MCP 2.x renamed FastMCP to MCPServer. ORBIT supports both 1.x and 2.x.",
+    "Verified against mcp 2.3.0 with a real client over stdio."
+  ],
+
+  "mcpServers": {
+    "orbit": {
+      "command": "orbit",
+      "args": [
+        "--db",
+        "/absolute/path/to/kb/orbit.db",
+        "mcp"
+      ]
+    }
+  },
+
+  "$tools": {
+    "orbit_search": {
+      "signature": "orbit_search(query: str, limit: int = 10, language: str | None = null, path_glob: str | None = null) -> dict",
+      "returns": "ranked passages with source_path, start_line, end_line, content_hash, both channel scores"
+    },
+    "orbit_get_chunk": {
+      "signature": "orbit_get_chunk(chunk_id: str) -> dict",
+      "returns": "one passage with its full provenance and current validation state"
+    },
+    "orbit_document": {
+      "signature": "orbit_document(doc_id: str) -> dict",
+      "returns": "document metadata, language, revision, chunk count and line span"
+    },
+    "orbit_validate_citation": {
+      "signature": "orbit_validate_citation(chunk_id: str) -> dict",
+      "returns": "validation state: valid | content_changed | path_missing | chunk_out_of_range | document_deleted"
+    },
+    "orbit_traverse_evidence": {
+      "signature": "orbit_traverse_evidence(chunk_id: str, max_depth: int = 2) -> dict",
+      "returns": "bounded graph traversal; each step is labelled explicit or inferred"
+    },
+    "orbit_compare": {
+      "signature": "orbit_compare(query_a: str, query_b: str, limit: int = 5) -> dict",
+      "returns": "two result sets side by side with citations, plus shared/unique chunk ids"
+    },
+    "orbit_status": {
+      "signature": "orbit_status() -> dict",
+      "returns": "index statistics, embedding provider and a freshness summary"
+    }
+  },
+
+  "$security_note": [
+    "Indexed documents are UNTRUSTED DATA. Every tool response carries an",
+    "'untrusted_content_note' field stating that retrieved passages are data,",
+    "not instructions. ORBIT never executes content found in indexed documents.",
+    "",
+    "A retrieved passage may contain text like 'IGNORE ALL PREVIOUS INSTRUCTIONS'.",
+    "That text is stored and returned verbatim, because suppressing it would make",
+    "ORBIT a worse search engine. The mitigation is provenance: every passage is",
+    "attributable to a file, line range and hash, so an agent can check it before",
+    "acting. Do not let an agent act on retrieved content without validating the",
+    "cited source first."
+  ]
+}
