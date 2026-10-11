@@ -294,6 +294,79 @@ class OrbitService:
     def db_name(self) -> str:
         return Path(self.config.db_path).name
 
+    # --------------------------------------------------------------- db switch
+    def use_db(self, db_path: str) -> None:
+        """Repoint every future operation at ``db_path``.
+
+        The service holds no open connection between calls (each method opens
+        its own short-lived engine), so switching the active DB is just swapping
+        the stored config. Nothing else has to be torn down.
+        """
+        db_path = (db_path or "").strip()
+        if db_path:
+            self.config = self.config.with_db_path(db_path)
+
+    def discover_databases(self) -> tuple[tuple[str, str], ...]:
+        """Find Orbit DB files near the active one, newest first.
+
+        Returns ``(display_name, absolute_path)`` pairs for every ``*.db`` in the
+        active DB's directory, so the UI can offer them in a switcher. The active
+        DB is always included even if it doesn't exist on disk yet.
+        """
+        active = Path(self.config.db_path)
+        directory = active.parent if str(active.parent) else Path(".")
+        found: dict[str, float] = {}
+        try:
+            for p in directory.glob("*.db"):
+                try:
+                    found[str(p.resolve())] = p.stat().st_mtime
+                except OSError:
+                    found[str(p.resolve())] = 0.0
+        except OSError:
+            pass
+        try:
+            found.setdefault(str(active.resolve()), active.stat().st_mtime if active.exists() else 0.0)
+        except OSError:
+            found.setdefault(str(active), 0.0)
+        ordered = sorted(found.items(), key=lambda kv: kv[1], reverse=True)
+        return tuple((Path(path).name, path) for path, _mtime in ordered)
+
+    @staticmethod
+    def suggest_db_for_index_path(index_path: str) -> str:
+        """Suggest a per-repo DB path for an index target.
+
+        A folder maps to ``.orbit/<folder-name>.db`` so each repo lands in its
+        own DB by default instead of everything piling into one shared index.
+        Returns an empty string when no sensible name can be derived (so the
+        caller keeps whatever DB is already selected).
+        """
+        raw = (index_path or "").strip().split()
+        if not raw:
+            return ""
+        first = Path(raw[0]).expanduser()
+        name = first.name or first.anchor.strip("\\/").replace(":", "")
+        if not name:
+            return ""
+        safe = "".join(c if (c.isalnum() or c in "-_.") else "_" for c in name)
+        return str(Path(".orbit") / f"{safe}.db")
+
+    def live_counts(self) -> tuple[int, int]:
+        """Current (documents, chunks) in the active DB; (0, 0) if not ready.
+
+        Cheap enough to poll on a timer while an index run writes: WAL lets this
+        reader see each per-document transaction as the writer commits it, so a
+        caller can show real progress without the engine emitting callbacks.
+        """
+        try:
+            with self._engine() as eng:
+                if not self._is_initialized(eng):
+                    return (0, 0)
+                docs = int(eng.db.scalar("SELECT count(*) FROM documents WHERE status='current'") or 0)  # type: ignore[attr-defined]
+                chunks = int(eng.db.scalar("SELECT count(*) FROM chunks") or 0)  # type: ignore[attr-defined]
+                return (docs, chunks)
+        except (OrbitError, sqlite3.Error):
+            return (0, 0)
+
     # ------------------------------------------------------------------- probes
     def _is_initialized(self, eng: "object") -> bool:
         """True when the schema exists (an index has been created)."""
@@ -344,17 +417,24 @@ class OrbitService:
             )
 
     def _repository_label(self, eng: "object") -> str:
-        """Most common indexed root's basename, derived from document metadata."""
+        """Repository name shown in the top bar: the most recently indexed root.
+
+        One DB can hold more than one repo. Picking the most *frequent* root
+        makes the label stick on whichever repo has the most files, so indexing
+        a smaller second repo into the same DB leaves the wrong name on screen.
+        Ordering by indexed_at and taking the newest root makes the label follow
+        the latest index run.
+        """
         import json
-        from collections import Counter
 
         try:
             rows = eng.db.query(  # type: ignore[attr-defined]
-                "SELECT metadata FROM documents WHERE status='current'"
+                "SELECT metadata, indexed_at FROM documents "
+                "WHERE status='current' ORDER BY indexed_at DESC, rowid DESC"
             )
         except (OrbitError, sqlite3.Error):
             return "—"
-        counter: Counter[str] = Counter()
+        roots: list[str] = []
         for r in rows:
             try:
                 meta = json.loads(r["metadata"] or "{}")
@@ -362,12 +442,16 @@ class OrbitService:
                 continue
             root = meta.get("root")
             if root:
-                counter[str(root)] += 1
-        if not counter:
+                roots.append(str(root))
+        if not roots:
             return "—"
-        top_root = counter.most_common(1)[0][0]
-        name = Path(top_root).name
-        return name or top_root or "—"
+        latest_root = roots[0]
+        distinct = len(set(roots))
+        name = Path(latest_root).name or latest_root or "—"
+        # Flag a mixed DB so the single name isn't mistaken for the whole index.
+        if distinct > 1:
+            name = f"{name} (+{distinct - 1} more)"
+        return name
 
     # ------------------------------------------------------------------ search
     def search(

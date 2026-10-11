@@ -74,8 +74,8 @@ after the subcommand wins), the same as every other Orbit command.
 
 | # | View | What it does |
 |---|------|--------------|
-| 1 | **Index Repository** | Index one or more paths (space-separated). Runs the real engine on a worker thread and reports the added / updated / deleted / unchanged / failed counts, chunks and embeddings written, and any per-file failures. |
-| 2 | **Search Knowledge** | Live hybrid search with debouncing. Each result card shows the rank, the fused score (with the separate lexical and vector scores when present), the line range, the retrieval method, and a validation badge, and you can filter by category. Highlight a result to populate the Source Details panel. On a selected hit, `e` jumps to Evidence and `v` to Validate; `r` re-validates every visible hit. |
+| 1 | **Index Repository** | Index one or more paths (space-separated). Pick which database to index into (each repo can get its own; the field defaults to `.orbit/<repo>.db` from the path you type). Runs the real engine on a worker thread with a live progress bar, and reports the added / updated / deleted / unchanged / failed counts, chunks and embeddings written, and any per-file failures. |
+| 2 | **Search Knowledge** | Live hybrid search with debouncing. Each result card shows the rank, the fused score (with the separate lexical and vector scores when present), the line range, the retrieval method, and a validation badge. Filter by category with the tab row (click a tab or press `f`). Highlight a result to populate the Source Details panel. On a selected hit, `e` jumps to Evidence and `v` to Validate; `r` re-validates every visible hit. |
 | 3 | **Explore Evidence** | Walk the evidence graph outward from a `chunk_id`. Edges are labelled `explicit` (structural) or `inferred` (heuristic). |
 | 4 | **Validate Citations** | Re-read the cited lines from disk and compare hashes for a `chunk_id`. Reports `valid` / `content_changed` / `path_missing` and so on. This checks provenance, not truth. |
 | 5 | **Detect Conflicts** | Heuristic conflict candidates across the corpus. Each one is labelled `inferred` with the rule that raised it, so treat them as leads to check, not findings. |
@@ -115,7 +115,7 @@ Settings & Status — active configuration and live index status:
 | `/` | Jump to the search box |
 | `e` | (Search) Open **Explore Evidence** for the selected hit |
 | `v` | (Search) Open **Validate Citations** for the selected hit |
-| `f` | Cycle the result category filter (Search view) |
+| `f` | Cycle the result category filter (Search view); the tabs are also clickable |
 | `r` | (Search) Re-validate every visible hit against disk and update the badges; on other views, refresh the active view |
 | `Esc` | Blur the focused input, or return to Search |
 | `q` | Quit |
@@ -131,6 +131,39 @@ The Search view groups languages into **Code**, **Docs**, and **Config**, plus
 comment spans, so a Comments tab would always come back empty, and a tab that
 can never return anything is worse than no tab. The UI only offers categories
 the engine can actually fill.
+
+The tabs are clickable, so you can switch category with the mouse while the
+search box still has focus. `f` cycles through them for keyboard use.
+
+## Databases (one per repo)
+
+Each repo can live in its own index instead of everything landing in a single
+shared `orbit.db`. When several repos share one database, search mixes their
+results and the top-bar repository label can only name one of them, so a
+per-repo file keeps them separate and the label honest.
+
+On the **Index Repository** view:
+
+- The **Index into** field is the database the next run writes to. Type a path
+  and it defaults to `.orbit/<repo-folder-name>.db`; override it with any path
+  you like. The run creates the file if it doesn't exist.
+- The **Database** selector lists the `*.db` files next to the active one
+  (newest first) and switches search, evidence, and validation to whichever you
+  pick. Indexing into a new database selects it automatically.
+
+The top-bar repository label follows the **most recently indexed** root in the
+active database, not the one with the most files, and flags a mixed database as
+`<name> (+N more)`.
+
+## Progress and loading
+
+Indexing shows a live progress bar and a running count of the documents and
+chunks written so far, read straight from the database as the engine commits
+each file (WAL lets a reader see each committed document mid-run). The engine
+doesn't emit a per-file callback, so there's no fabricated percentage during the
+sweep — the bar pulses and the real count climbs, then snaps to complete when
+the run finishes. The conflict scan, status load, and evidence/validate lookups
+each show their own working state while the worker thread runs.
 
 ## Icons and terminal setup
 

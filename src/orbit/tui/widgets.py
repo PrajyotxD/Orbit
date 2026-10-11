@@ -12,11 +12,13 @@ from __future__ import annotations
 from rich.syntax import Syntax
 from rich.text import Text
 from textual.app import ComposeResult
-from textual.containers import Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.message import Message
 from textual.widgets import Collapsible, ListItem, Static
 
 from .icons import DEFAULT_ICON_SET, IconSet, get_icon_set
 from .service import (
+    CATEGORIES,
     EvidenceSnapshot,
     HitSnapshot,
     TopInfo,
@@ -28,6 +30,8 @@ __all__ = [
     "Sidebar",
     "ResultItem",
     "SourceDetails",
+    "FilterTab",
+    "FilterBar",
     "NAV_ITEMS",
     "lexer_for_language",
 ]
@@ -105,6 +109,70 @@ _LEXER_BY_LANGUAGE: dict[str, str] = {
 def lexer_for_language(language: str) -> str:
     """Map an Orbit language label to a pygments lexer name, defaulting to text."""
     return _LEXER_BY_LANGUAGE.get((language or "").lower(), "text")
+
+
+# --------------------------------------------------------------------------
+# Filter tab bar (clickable)
+# --------------------------------------------------------------------------
+class FilterTab(Static):
+    """One clickable category tab in the Search filter row.
+
+    Each tab is a focusable widget that posts :class:`FilterTab.Selected` on
+    click or Enter, so the filter can change by mouse while the search Input
+    keeps focus (a bare ``f`` keypress is swallowed by a focused Input).
+    """
+
+    can_focus = True
+
+    class Selected(Message):
+        """Posted when a tab is activated (click or Enter)."""
+
+        def __init__(self, name: str) -> None:
+            self.name = name
+            super().__init__()
+
+    def __init__(self, name: str, *, active: bool) -> None:
+        super().__init__(id=f"filter-tab-{name}")
+        self._name = name
+        self._active = active
+        self.add_class("filter-tab")
+        if active:
+            self.add_class("filter-tab-active")
+
+    def render(self) -> Text:
+        label = self._name.capitalize()
+        if self._active:
+            return Text(f" {label} ", style="bold #0a0e14 on #3fb950")
+        return Text(f" {label} ", style="#6e7681")
+
+    def set_active(self, active: bool) -> None:
+        self._active = active
+        self.set_class(active, "filter-tab-active")
+        self.refresh()
+
+    def on_click(self) -> None:
+        self.post_message(self.Selected(self._name))
+
+    def on_key(self, event) -> None:
+        if event.key in ("enter", "space"):
+            event.stop()
+            self.post_message(self.Selected(self._name))
+
+
+class FilterBar(Horizontal):
+    """The row of category tabs plus a trailing hint, built from CATEGORIES."""
+
+    def compose(self) -> ComposeResult:
+        for name, _langs in CATEGORIES:
+            yield FilterTab(name, active=(name == "all"))
+        yield Static("  ·  click or press f", id="filter-hint")
+
+    def set_active(self, active_name: str) -> None:
+        for name, _langs in CATEGORIES:
+            try:
+                self.query_one(f"#filter-tab-{name}", FilterTab).set_active(name == active_name)
+            except Exception:  # noqa: BLE001 - not yet mounted
+                pass
 
 
 # --------------------------------------------------------------------------

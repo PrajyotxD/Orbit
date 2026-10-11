@@ -34,6 +34,8 @@ from textual.widgets import (
     Label,
     ListItem,
     ListView,
+    ProgressBar,
+    Select,
     Static,
 )
 from textual.widgets import (
@@ -56,6 +58,8 @@ from .service import (
 )
 from .widgets import (
     NAV_ITEMS,
+    FilterBar,
+    FilterTab,
     ResultItem,
     Sidebar,
     SourceDetails,
@@ -75,7 +79,7 @@ _HINTS: dict[str, tuple[tuple[str, str], ...]] = {
         ("v", "Validate"), ("r", "Re-validate"), ("f", "Filter"), ("q", "Quit"),
     ),
     "view-index": (
-        ("Enter", "Index"), ("/", "Search"), ("r", "Refresh"), ("q", "Quit"),
+        ("Enter", "Index"), ("Tab", "DB field"), ("/", "Search"), ("r", "Refresh"), ("q", "Quit"),
     ),
     "view-evidence": (
         ("Enter", "Explore"), ("/", "Search"), ("Esc", "Back"), ("q", "Quit"),
@@ -140,6 +144,7 @@ class OrbitTUI(App):
         self._last_search: SearchSnapshot | None = None
         self._selected_chunk_id = ""
         self._search_timer = None
+        self._index_poll = None
 
     # ---------------------------------------------------------------- compose
     def compose(self) -> ComposeResult:
@@ -167,7 +172,7 @@ class OrbitTUI(App):
                 classes="view-subtitle",
             )
             yield Input(placeholder="Type a query and press Enter…", id="search-input")
-            yield Static("", id="filter-bar")
+            yield FilterBar(id="filter-bar")
             yield Static("Type a query to search.", id="result-meta")
             yield ListView(id="results")
 
@@ -179,18 +184,38 @@ class OrbitTUI(App):
                 "only changed files are rewritten.",
                 classes="view-subtitle",
             )
+            # Database selector: each repo can get its own DB. Picking one here
+            # repoints search/evidence/validate at it too.
+            with Horizontal(id="db-controls"):
+                yield Static("Database", classes="field-label")
+                yield Select(
+                    self._db_options(),
+                    id="db-select",
+                    value=str(Path(self._config.db_path).resolve()),
+                    allow_blank=False,
+                )
             yield Input(
                 value=self._default_index_path,
                 placeholder="path/to/repo  (space-separated paths allowed)",
                 id="index-input",
             )
+            # Target DB for the next index run; defaults to a per-repo name
+            # derived from the path above, but stays editable.
+            with Horizontal(id="index-target"):
+                yield Static("Index into", classes="field-label")
+                yield Input(placeholder=".orbit/<repo>.db", id="index-db-input")
             with Horizontal(id="index-controls"):
                 yield Button("Index", id="index-button", variant="success")
+            yield ProgressBar(id="index-progress", show_eta=False)
             yield Static("", id="index-status", classes="hint")
             yield VerticalScroll(
                 Static(self._index_placeholder(), id="index-log"),
                 classes="panel-scroll",
             )
+
+    def _db_options(self) -> list[tuple[str, str]]:
+        """(label, absolute-path) options for the DB switcher."""
+        return [(name, path) for name, path in self.service.discover_databases()]
 
     def _compose_evidence_view(self) -> ComposeResult:
         with Vertical(id="view-evidence"):
@@ -309,7 +334,9 @@ class OrbitTUI(App):
         sidebar = self.query_one("#sidebar", Sidebar)
         sidebar.mount(nav, after="#logo")
         self._set_hints(self._active_view)
-        self.query_one("#filter-bar", Static).update(self._filter_bar_text())
+        self.query_one("#filter-bar", FilterBar).set_active(self._filter)
+        # The progress bar only shows during an index run.
+        self.query_one("#index-progress", ProgressBar).display = False
         self._refresh_top()
         self.set_focus(self.query_one("#search-input", Input))
         self._apply_responsive(self.size.width)
@@ -366,12 +393,15 @@ class OrbitTUI(App):
         if view_id == "view-conflicts":
             self.query_one("#conflicts-list", Static).update("Scanning for conflict candidates…")
             self._set_busy("Scanning conflicts…")
+            self._set_loading("#conflicts-list", True)
             self._conflicts_worker()
         elif view_id == "view-mcp":
+            self._set_loading("#mcp-block", True)
             self._mcp_worker()
         elif view_id == "view-settings":
             self.query_one("#settings-block", Static).update("Loading status…")
             self._set_busy("Loading status…")
+            self._set_loading("#settings-block", True)
             self._settings_worker()
         elif view_id == "view-evidence":
             inp = self.query_one("#evidence-input", Input)
@@ -444,6 +474,13 @@ class OrbitTUI(App):
     def _set_error(self, message: str) -> None:
         self.query_one("#statusbar", StatusBar).set_status(message, kind="error")
 
+    def _set_loading(self, selector: str, on: bool) -> None:
+        """Toggle Textual's loading spinner on a panel while its worker runs."""
+        try:
+            self.query_one(selector).loading = on
+        except Exception:  # noqa: BLE001 - panel not mounted yet
+            pass
+
     # ----------------------------------------------------------- top/sidebar
     def _refresh_top(self) -> None:
         self._top_worker()
@@ -489,6 +526,7 @@ class OrbitTUI(App):
             return
         self._set_busy(f"Searching “{query.strip()[:40]}”…")
         self.query_one("#result-meta", Static).update("Searching…")
+        self._set_loading("#results", True)
         self._search_worker(query)
 
     @work(thread=True, exclusive=True, group="search")
@@ -500,6 +538,7 @@ class OrbitTUI(App):
         self.call_from_thread(self._apply_search, snap)
 
     def _apply_search(self, snap: SearchSnapshot) -> None:
+        self._set_loading("#results", False)
         self._last_search = snap
         self._render_results()
         if snap.error:
@@ -513,7 +552,7 @@ class OrbitTUI(App):
         meta = self.query_one("#result-meta", Static)
         details = self.query_one("#details", SourceDetails)
         snap = self._last_search
-        self.query_one("#filter-bar", Static).update(self._filter_bar_text())
+        self.query_one("#filter-bar", FilterBar).set_active(self._filter)
         if snap is None:
             meta.update("Type a query to search.")
             details.clear()
@@ -588,32 +627,54 @@ class OrbitTUI(App):
             return
         names = [c[0] for c in CATEGORIES]
         idx = names.index(self._filter) if self._filter in names else 0
-        self._filter = names[(idx + 1) % len(names)]
+        self._set_filter(names[(idx + 1) % len(names)])
+
+    @on(FilterTab.Selected)
+    def _filter_tab_clicked(self, event: FilterTab.Selected) -> None:
+        if self._active_view != "view-search":
+            return
+        self._set_filter(event.name)
+
+    def _set_filter(self, name: str) -> None:
+        self._filter = name
+        self.query_one("#filter-bar", FilterBar).set_active(name)
         self._render_results()
-        self._set_ready(f"Filter: {self._filter}")
-
-    def _filter_bar_text(self):
-        from rich.text import Text
-
-        text = Text(no_wrap=True, overflow="ellipsis")
-        for i, (name, _langs) in enumerate(CATEGORIES):
-            if i:
-                text.append("   ")
-            label = name.capitalize()
-            if name == self._filter:
-                text.append(f" {label} ", style="bold #0a0e14 on #3fb950")
-            else:
-                text.append(label, style="#6e7681")
-        text.append("   ·  f: cycle", style="#484f58")
-        return text
+        self._set_ready(f"Filter: {name}")
 
     # ---------------------------------------------------------------- index
+    @on(Select.Changed, "#db-select")
+    def _db_selected(self, event: Select.Changed) -> None:
+        """Switch the active DB when the user picks one from the selector."""
+        if event.value is Select.BLANK or not event.value:
+            return
+        self.service.use_db(str(event.value))
+        self._last_search = None
+        self.query_one("#results", ListView).clear()
+        self.query_one("#result-meta", Static).update("Type a query to search.")
+        self.query_one("#details", SourceDetails).clear()
+        self._set_ready(f"Database: {Path(str(event.value)).name}")
+        self._refresh_top()
+
+    @on(Input.Changed, "#index-input")
+    def _index_path_changed(self, event: Input.Changed) -> None:
+        """Suggest a per-repo DB name as the path is typed (if the field is empty)."""
+        target = self.query_one("#index-db-input", Input)
+        if target.value.strip():
+            return  # the user set an explicit target; don't overwrite it
+        suggestion = self.service.suggest_db_for_index_path(event.value)
+        if suggestion:
+            target.placeholder = suggestion
+
     @on(Button.Pressed, "#index-button")
     def _index_pressed(self, event: Button.Pressed) -> None:
         self._start_index()
 
     @on(Input.Submitted, "#index-input")
     def _index_submitted(self, event: Input.Submitted) -> None:
+        self._start_index()
+
+    @on(Input.Submitted, "#index-db-input")
+    def _index_db_submitted(self, event: Input.Submitted) -> None:
         self._start_index()
 
     def _start_index(self) -> None:
@@ -625,13 +686,58 @@ class OrbitTUI(App):
             )
             self._set_error("No path to index")
             return
+
+        # Resolve the target DB: an explicit value wins, otherwise the per-repo
+        # suggestion, otherwise whatever DB is currently selected.
+        target_field = self.query_one("#index-db-input", Input)
+        target_db = target_field.value.strip() or self.service.suggest_db_for_index_path(raw)
+        if target_db:
+            self.service.use_db(target_db)
+            self._sync_db_select(target_db)
+
         label = " ".join(paths) if paths else "configured paths"
         self.query_one("#index-status", Static).update(
-            f"{self.icons.arrow} Indexing {label} …"
+            f"{self.icons.arrow} Indexing {label} into {self.service.db_name} …"
         )
         self.query_one("#index-button", Button).disabled = True
         self._set_busy(f"Indexing {label}…")
+
+        # Switch the progress bar to indeterminate (pulsing) and start polling
+        # the DB for a real, growing document count. The engine emits no
+        # per-file callback, so an honest percentage isn't available; the live
+        # count is the real figure instead of a fabricated bar.
+        bar = self.query_one("#index-progress", ProgressBar)
+        bar.display = True
+        bar.update(total=None)
+        self._index_poll = self.set_interval(0.25, self._poll_index_progress)
         self._index_worker(paths)
+
+    def _sync_db_select(self, db_path: str) -> None:
+        """Point the DB Select at ``db_path``, adding it to the list if new."""
+        try:
+            sel = self.query_one("#db-select", Select)
+        except Exception:  # noqa: BLE001
+            return
+        resolved = str(Path(db_path).resolve())
+        options = self._db_options()
+        if resolved not in {p for _n, p in options}:
+            options.insert(0, (Path(resolved).name, resolved))
+        # Rebuild the widget's options every time: the Select was composed with
+        # an older set, so just assigning .value to a path it doesn't yet know
+        # about would be rejected. set_options refreshes what it will accept.
+        sel.set_options(options)
+        try:
+            sel.value = resolved
+        except Exception:  # noqa: BLE001 - value not in options yet; harmless
+            pass
+
+    def _poll_index_progress(self) -> None:
+        """Report the live document count written so far (real, from the DB)."""
+        docs, chunks = self.service.live_counts()
+        self.query_one("#index-status", Static).update(
+            f"{self.icons.arrow} Indexing into {self.service.db_name} — "
+            f"{docs:,} document(s), {chunks:,} chunk(s) so far…"
+        )
 
     @work(thread=True, exclusive=True, group="index")
     def _index_worker(self, paths: Sequence[str]) -> None:
@@ -643,6 +749,21 @@ class OrbitTUI(App):
 
     def _apply_index(self, snap: IndexSnapshot) -> None:
         from rich.text import Text
+
+        # Stop the live-count poll and settle the progress bar.
+        if getattr(self, "_index_poll", None) is not None:
+            try:
+                self._index_poll.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            self._index_poll = None
+        try:
+            bar = self.query_one("#index-progress", ProgressBar)
+            # Snap to 100% on success, then hide; leave visible on failure.
+            bar.update(total=100, progress=100)
+            bar.display = bool(snap.error)
+        except Exception:  # noqa: BLE001
+            pass
 
         try:
             self.query_one("#index-button", Button).disabled = False
@@ -697,6 +818,7 @@ class OrbitTUI(App):
             return
         self.query_one("#evidence-block", Static).update("Walking the evidence graph…")
         self._set_busy("Exploring evidence…")
+        self._set_loading("#evidence-block", True)
         self._evidence_worker(chunk_id)
 
     @work(thread=True, exclusive=True, group="evidence-view")
@@ -710,6 +832,7 @@ class OrbitTUI(App):
     def _apply_evidence_view(self, snap: EvidenceSnapshot) -> None:
         from rich.text import Text
 
+        self._set_loading("#evidence-block", False)
         text = Text()
         if snap.error:
             text.append(snap.error, style="#f85149")
@@ -749,6 +872,7 @@ class OrbitTUI(App):
             return
         self.query_one("#validate-block", Static).update("Re-reading source from disk…")
         self._set_busy("Validating…")
+        self._set_loading("#validate-block", True)
         self._validate_worker(chunk_id)
 
     @work(thread=True, exclusive=True, group="validate")
@@ -762,6 +886,7 @@ class OrbitTUI(App):
     def _apply_validate(self, snap: ValidationSnapshot) -> None:
         from rich.text import Text
 
+        self._set_loading("#validate-block", False)
         text = Text()
         colour = {
             "valid": "#3fb950",
@@ -814,6 +939,7 @@ class OrbitTUI(App):
     def _apply_conflicts(self, scan: ConflictScanSnapshot) -> None:
         from rich.text import Text
 
+        self._set_loading("#conflicts-list", False)
         rows = scan.rows
         text = Text()
         if scan.error:
@@ -871,6 +997,7 @@ class OrbitTUI(App):
     def _apply_mcp(self, snap: McpSnapshot) -> None:
         from rich.text import Text
 
+        self._set_loading("#mcp-block", False)
         text = Text()
         if snap.sdk_available:
             text.append(f"{self.icons.ok} MCP SDK available\n", style="#3fb950")
@@ -900,6 +1027,7 @@ class OrbitTUI(App):
     def _apply_settings(self, status: StatusSnapshot, rows: list[tuple[str, str]]) -> None:
         from rich.text import Text
 
+        self._set_loading("#settings-block", False)
         text = Text()
         text.append("Configuration\n", style="bold #e6edf3")
         for label, value in rows:
@@ -972,6 +1100,7 @@ class OrbitTUI(App):
         self.switch_view("view-evidence")
         self.query_one("#evidence-block", Static).update("Walking the evidence graph…")
         self._set_busy("Exploring evidence…")
+        self._set_loading("#evidence-block", True)
         self._evidence_worker(chunk_id)
 
     def action_validate_selected(self) -> None:
@@ -987,6 +1116,7 @@ class OrbitTUI(App):
         self.switch_view("view-validate")
         self.query_one("#validate-block", Static).update("Re-reading source from disk…")
         self._set_busy("Validating…")
+        self._set_loading("#validate-block", True)
         self._validate_worker(chunk_id)
 
     # ------------------------------------------------------- re-validate (r)

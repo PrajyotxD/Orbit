@@ -301,6 +301,42 @@ async def test_filter_cycle_filters_results(db_path: Path, tmp_path: Path) -> No
         assert code_paths and all(p.endswith(".py") for p in code_paths)
 
 
+@_pilot_test
+async def test_filter_tab_click_sets_filter(db_path: Path, tmp_path: Path) -> None:
+    """Clicking a tab (not just pressing f) changes the active filter, even
+    while the search Input holds focus — the old single-Static bar could not."""
+    from orbit.tui.widgets import FilterTab
+
+    root = tmp_path / "mixed2"
+    root.mkdir()
+    write(root, "mod.py", "def scheduling_quaternion():\n    return 'quaternion scheduling'\n")
+    write(root, "guide.md", "# Guide\n\nThe quaternion scheduling subsystem is documented here.\n")
+    cfg = make_config(db_path)
+    eng = OrbitEngine(cfg)
+    eng.index([root])
+    eng.close()
+
+    app = OrbitTUI(cfg)
+    async with app.run_test(size=(140, 40)) as pilot:
+        await _wait_idle(app, pilot)
+        search = app.query_one("#search-input", Input)
+        app.set_focus(search)  # keep focus on the Input, like a real user typing
+        search.value = "quaternion scheduling"
+        await pilot.press("enter")
+        await _wait_idle(app, pilot)
+        assert app._filter == "all"
+
+        # Activate the 'docs' tab directly (a click posts the same message).
+        docs_tab = app.query_one("#filter-tab-docs", FilterTab)
+        docs_tab.on_click()
+        await _wait_idle(app, pilot)
+        await pilot.pause()
+        assert app._filter == "docs"
+        paths = [c.hit.path for c in app.query_one("#results", ListView).children
+                 if isinstance(c, ResultItem)]
+        assert paths and all(p.endswith(".md") for p in paths)
+
+
 # --------------------------------------------------------------------------
 # index view
 # --------------------------------------------------------------------------
@@ -332,6 +368,81 @@ async def test_index_view_runs_the_engine(empty_config, corpus: Path) -> None:
         await _wait_idle(app, pilot)
         results = app.query_one("#results", ListView)
         assert [c for c in results.children if isinstance(c, ResultItem)]
+
+
+@_pilot_test
+async def test_index_into_per_repo_db_switches_active_db(empty_config, corpus: Path, tmp_path: Path) -> None:
+    """Indexing into an explicit per-repo DB repoints the service and the DB
+    selector at that file, and a real ProgressBar is shown during the run."""
+    from textual.widgets import ProgressBar, Select
+
+    target_db = tmp_path / "repoX.db"
+    app = OrbitTUI(empty_config)
+    async with app.run_test(size=(140, 40)) as pilot:
+        await _wait_idle(app, pilot)
+        app.set_focus(None)
+        await pilot.press("1")  # Index Repository
+        await pilot.pause()
+        # The progress bar is hidden until a run starts.
+        assert app.query_one("#index-progress", ProgressBar).display is False
+
+        app.query_one("#index-input", Input).value = str(corpus)
+        app.query_one("#index-db-input", Input).value = str(target_db)
+        app.set_focus(app.query_one("#index-button"))
+        await pilot.press("enter")
+        await _wait_idle(app, pilot)
+
+        rendered = _plain(app.query_one("#index-log", Static))
+        assert "Index complete" in rendered
+        # The service now points at the per-repo DB, and so does the selector.
+        assert app.service.db_name == "repoX.db"
+        assert Path(str(app.query_one("#db-select", Select).value)).name == "repoX.db"
+        # The real engine wrote into that DB (not the default empty one).
+        assert target_db.exists()
+
+
+# --------------------------------------------------------------------------
+# db switcher
+# --------------------------------------------------------------------------
+@_pilot_test
+async def test_db_select_switches_active_index(db_path: Path, tmp_path: Path) -> None:
+    """Picking a different DB in the selector repoints search at it."""
+    from textual.widgets import Select
+
+    # DB one: has alpha.
+    root_one = tmp_path / "one"
+    root_one.mkdir()
+    write(root_one, "a.py", "def alpha():\n    return 'quaternion alpha'\n")
+    db_one = tmp_path / "one.db"
+    eng = OrbitEngine(make_config(db_one))
+    eng.index([root_one])
+    eng.close()
+
+    # DB two: has beta.
+    root_two = tmp_path / "two"
+    root_two.mkdir()
+    write(root_two, "b.py", "def beta():\n    return 'quaternion beta'\n")
+    db_two = tmp_path / "two.db"
+    eng = OrbitEngine(make_config(db_two))
+    eng.index([root_two])
+    eng.close()
+
+    app = OrbitTUI(make_config(db_one))
+    async with app.run_test(size=(140, 40)) as pilot:
+        await _wait_idle(app, pilot)
+        # Switch to db_two through the service hook the Select change calls.
+        app.service.use_db(str(db_two))
+        app._refresh_top()
+        await _wait_idle(app, pilot)
+        search = app.query_one("#search-input", Input)
+        app.set_focus(search)
+        search.value = "quaternion"
+        await pilot.press("enter")
+        await _wait_idle(app, pilot)
+        paths = [c.hit.path for c in app.query_one("#results", ListView).children
+                 if isinstance(c, ResultItem)]
+        assert paths and any("b.py" in p for p in paths)
+        assert not any("a.py" in p for p in paths)
 
 
 # --------------------------------------------------------------------------

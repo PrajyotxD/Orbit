@@ -153,6 +153,112 @@ def test_top_info_populated(service: OrbitService) -> None:
     assert info.last_indexed != "never"
 
 
+# --------------------------------------------------------------------------
+# repository label: follows the most recently indexed root, not the biggest
+# --------------------------------------------------------------------------
+def test_repository_label_tracks_latest_indexed_repo(db_path: Path, tmp_path: Path) -> None:
+    """A DB holding two repos must show the one indexed most recently, even when
+    the first repo has far more files."""
+    from orbit.engine import OrbitEngine
+
+    big = tmp_path / "big-repo"
+    big.mkdir()
+    for i in range(5):
+        write(big, f"m{i}.py", f"def big_{i}():\n    return {i}\n")
+    small = tmp_path / "small-repo"
+    small.mkdir()
+    write(small, "only.py", "def small():\n    return 1\n")
+
+    cfg = make_config(db_path)
+    eng = OrbitEngine(cfg)
+    eng.index([big])      # five files from big-repo first
+    eng.index([small])    # one file from small-repo second (most recent)
+    eng.close()
+
+    info = OrbitService(cfg).top_info()
+    # The latest-indexed repo wins even though big-repo has more files.
+    assert info.repository.startswith("small-repo")
+    # The DB mixes two repos, so the label flags the extra one.
+    assert "+1 more" in info.repository
+
+
+# --------------------------------------------------------------------------
+# per-repo database: switching + name suggestion + live counts
+# --------------------------------------------------------------------------
+def test_suggest_db_for_index_path_uses_repo_folder_name() -> None:
+    assert OrbitService.suggest_db_for_index_path("/home/me/my-project") == str(
+        Path(".orbit") / "my-project.db"
+    )
+    # First of several space-separated paths wins; empty input suggests nothing.
+    assert OrbitService.suggest_db_for_index_path("repoA repoB").endswith("repoA.db")
+    assert OrbitService.suggest_db_for_index_path("   ") == ""
+
+
+def test_use_db_repoints_the_engine(tmp_path: Path) -> None:
+    """Switching the DB changes which index the service reads from."""
+    from orbit.engine import OrbitEngine
+
+    root_one = tmp_path / "one"
+    root_one.mkdir()
+    write(root_one, "a.py", "def alpha():\n    return 'quaternion alpha'\n")
+    db_one = tmp_path / "one.db"
+    eng = OrbitEngine(make_config(db_one))
+    eng.index([root_one])
+    eng.close()
+
+    root_two = tmp_path / "two"
+    root_two.mkdir()
+    write(root_two, "b.py", "def beta():\n    return 'quaternion beta'\n")
+    db_two = tmp_path / "two.db"
+    eng = OrbitEngine(make_config(db_two))
+    eng.index([root_two])
+    eng.close()
+
+    svc = OrbitService(make_config(db_one))
+    assert svc.db_name == "one.db"
+    hits_one = svc.search("quaternion", limit=5).hits
+    assert any("a.py" in h.path for h in hits_one)
+
+    svc.use_db(str(db_two))
+    assert svc.db_name == "two.db"
+    hits_two = svc.search("quaternion", limit=5).hits
+    assert any("b.py" in h.path for h in hits_two)
+    assert not any("a.py" in h.path for h in hits_two)
+
+
+def test_discover_databases_lists_dbs_newest_first(tmp_path: Path) -> None:
+    import os
+    import time
+
+    older = tmp_path / "older.db"
+    newer = tmp_path / "newer.db"
+    older.write_bytes(b"")
+    newer.write_bytes(b"")
+    # Force a clear mtime ordering regardless of filesystem granularity.
+    now = time.time()
+    os.utime(older, (now - 100, now - 100))
+    os.utime(newer, (now, now))
+
+    svc = OrbitService(make_config(tmp_path / "newer.db"))
+    found = svc.discover_databases()
+    names = [name for name, _path in found]
+    assert names[0] == "newer.db"
+    assert "older.db" in names
+
+
+def test_live_counts_grow_with_the_index(db_path: Path, corpus: Path) -> None:
+    from orbit.engine import OrbitEngine
+
+    svc = OrbitService(make_config(db_path))
+    assert svc.live_counts() == (0, 0)  # nothing indexed yet
+    eng = OrbitEngine(make_config(db_path))
+    eng.index([corpus])
+    eng.close()
+    docs, chunks = svc.live_counts()
+    assert docs == 4
+    assert chunks > 0
+
+
 def test_status_populated_counts_match_engine(service: OrbitService) -> None:
     status = service.status(with_freshness=True)
     assert status.initialized is True
