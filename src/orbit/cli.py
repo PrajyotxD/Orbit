@@ -220,6 +220,25 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ui(args: argparse.Namespace) -> int:
+    """Launch the full-screen terminal UI over the resolved db/config.
+
+    The UI is an optional layer that needs the ``tui`` extra (textual). The
+    import stays in here so the rest of the CLI doesn't depend on it, and a
+    missing dependency comes back as a normal OrbitError with install guidance
+    instead of a traceback.
+    """
+    from .tui import launch
+
+    config = _resolve_config(args)
+    launch(
+        config,
+        default_index_path=getattr(args, "index_path", "") or "",
+        icon_set=getattr(args, "icons", None),
+    )
+    return 0
+
+
 def cmd_index(args: argparse.Namespace) -> int:
     with _engine(args) as engine:
         report = engine.index(args.paths or None, prune=not args.no_prune)
@@ -575,6 +594,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_mcp = sub.add_parser("mcp", help="serve the MCP tools over stdio")
     _add_common(p_mcp)
     p_mcp.set_defaults(func=cmd_mcp)
+
+    p_ui = sub.add_parser("ui", help="launch the full-screen terminal UI (needs the 'tui' extra)")
+    p_ui.add_argument(
+        "--index-path",
+        default="",
+        metavar="PATH",
+        help="pre-fill the Index Repository field with this path",
+    )
+    p_ui.add_argument(
+        "--icons",
+        default=None,
+        choices=["unicode", "nerd", "ascii"],
+        help="icon glyph set (default: unicode; or set ORBIT_ICONS)",
+    )
+    _add_common(p_ui)
+    p_ui.set_defaults(func=cmd_ui)
 
     return parser
 

@@ -245,7 +245,28 @@ orbit context "query"          # bounded, deduplicated context
 orbit answer "query" --no-llm  # evidence, no LLM required
 orbit config-schema            # print the full config surface
 orbit --db <path> mcp          # MCP server on stdio
+orbit --db <path> ui           # full-screen terminal UI (needs the 'tui' extra)
 ```
+
+---
+
+## 🖥️ Terminal UI
+
+Prefer a full-screen, interactive view? Orbit ships an optional TUI built on
+[Textual](https://textual.textualize.io/) — a thin presentation layer over the
+same engine, showing only real data.
+
+```bash
+pip install -e ".[tui]"
+orbit --db kb.db ui
+```
+
+![Orbit TUI](docs/images/tui-search.png)
+
+Live hybrid search with debouncing, a syntax-highlighted source panel with
+verifiable citations, and views for indexing, evidence, validation, conflicts,
+MCP, and status — all keyboard-driven. Full keybindings, layout, and
+troubleshooting: [`docs/tui.md`](docs/tui.md).
 
 ---
 

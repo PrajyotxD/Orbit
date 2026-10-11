@@ -38,6 +38,10 @@ dependencies = ["numpy>=1.24"]
 embeddings = ["transformers>=4.40", "torch>=2.0"]
 # MCP server for agent tool access.
 mcp = ["mcp>=1.0"]
+# Full-screen interactive terminal UI. textual bundles rich, so a single
+# dependency pulls in everything the UI needs; both are imported lazily and are
+# never required by the engine, the non-interactive CLI or the MCP server.
+tui = ["textual>=0.60"]
 # Richer document parsing.
 parsing = ["PyYAML>=6.0", "Markdown>=3.5", "beautifulsoup4>=4.12", "lxml>=5.0"]
 # Answer generation against a local or OpenAI-compatible HTTP endpoint.
@@ -67,7 +71,7 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-orbit = ["py.typed"]
+orbit = ["py.typed", "tui/*.tcss"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
