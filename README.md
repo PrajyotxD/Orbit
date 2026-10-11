@@ -261,7 +261,7 @@ pip install -e ".[tui]"
 orbit --db kb.db ui
 ```
 
-![Orbit TUI](docs/images/tui-search.png)
+![Orbit TUI](docs/images/tui-index.png)
 
 Live hybrid search with debouncing, a syntax-highlighted source panel with
 verifiable citations, and views for indexing, evidence, validation, conflicts,

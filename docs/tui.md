@@ -7,7 +7,7 @@ every number on screen comes from a real engine call. The non-interactive CLI,
 the Python API, and the MCP server don't change and don't depend on anything
 under `src/orbit/tui/`.
 
-![Orbit TUI — Search Knowledge](images/tui-search.png)
+![Orbit TUI — Index Repository](images/tui-index.png)
 
 ## Install
 
@@ -82,6 +82,28 @@ after the subcommand wins), the same as every other Orbit command.
 | 6 | **MCP Server** | Shows the MCP launch command and the 7 tools the server exposes, and whether the `mcp` SDK is installed. The server runs as its own process, separate from this UI. |
 | 7 | **Settings** | Read-only view of the active configuration and live index status: schema version, document / chunk / embedding counts, languages, freshness. |
 | 0 | **Exit** | Quit and restore the terminal. |
+
+### Screens
+
+Index Repository, after a run — scanned / added / updated counts and chunks written:
+
+![Orbit TUI — Index Repository with results](images/tui-index.png)
+
+Index Repository, empty state before a run:
+
+![Orbit TUI — Index Repository empty state](images/tui-index-empty.png)
+
+Explore Evidence — walk the evidence graph from a `chunk_id`:
+
+![Orbit TUI — Explore Evidence](images/tui-evidence.png)
+
+Detect Conflicts — inferred candidates with honest scan coverage (`scanned N of M chunks`):
+
+![Orbit TUI — Detect Conflicts](images/tui-conflicts.png)
+
+Settings & Status — active configuration and live index status:
+
+![Orbit TUI — Settings and Status](images/tui-settings.png)
 
 ## Keyboard shortcuts
 
